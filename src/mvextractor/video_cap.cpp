@@ -112,7 +112,8 @@ bool VideoCap::open(const char *url) {
     if (avcodec_parameters_to_context(this->video_dec_ctx, st->codecpar) < 0)
         goto error;
 
-    this->video_dec_ctx->thread_count = std::thread::hardware_concurrency();
+    // FFmpeg recommends no more than 16 threads. We use 1.
+    this->video_dec_ctx->thread_count = static_cast<int>(1);
 #ifdef DEBUG
     std::cerr << "Using parallel processing with " << this->video_dec_ctx->thread_count << " threads" << std::endl;
 #endif
@@ -199,38 +200,38 @@ bool VideoCap::grab(void) {
         avcodec_decode_video2(this->video_dec_ctx, this->frame, &got_frame, &(this->packet));
 
         if(got_frame) {
-#ifdef DEBUG
-            // get timestamps of packet from RTPS stream
-            std::cerr << "### Frame No. " <<  this->frame_number << " ###" << std::endl;
-            std::cerr << "synced: " << packet.synced << std::endl;
-            std::cerr << "seq: " << packet.seq << std::endl;
-            std::cerr << "timestamp: " << packet.timestamp << std::endl;
-            std::cerr << "last_rtcp_ntp_time (NTP): " << packet.last_rtcp_ntp_time << std::endl;
-            struct timeval last_rtcp_ntp_time_unix;
-            ntp2tv(&packet.last_rtcp_ntp_time, &last_rtcp_ntp_time_unix);
-            std::cerr << "last_rtcp_ntp_time (UNIX): ";
-            printf("%ld.%06ld\n", last_rtcp_ntp_time_unix.tv_sec, last_rtcp_ntp_time_unix.tv_usec);
-            std::cerr << "last_rtcp_timestamp: " << packet.last_rtcp_timestamp << std::endl;
-#endif
+// #ifdef DEBUG
+//             // get timestamps of packet from RTPS stream
+//             std::cerr << "### Frame No. " <<  this->frame_number << " ###" << std::endl;
+//             std::cerr << "synced: " << packet.synced << std::endl;
+//             std::cerr << "seq: " << packet.seq << std::endl;
+//             std::cerr << "timestamp: " << packet.timestamp << std::endl;
+//             std::cerr << "last_rtcp_ntp_time (NTP): " << packet.last_rtcp_ntp_time << std::endl;
+//             struct timeval last_rtcp_ntp_time_unix;
+//             ntp2tv(&packet.last_rtcp_ntp_time, &last_rtcp_ntp_time_unix);
+//             std::cerr << "last_rtcp_ntp_time (UNIX): ";
+//             printf("%ld.%06ld\n", last_rtcp_ntp_time_unix.tv_sec, last_rtcp_ntp_time_unix.tv_usec);
+//             std::cerr << "last_rtcp_timestamp: " << packet.last_rtcp_timestamp << std::endl;
+// #endif
 
             // wait for the first RTCP sender report containing RTP timestamp <-> NTP walltime mapping,
             // before this no reliable frame timestmap can be computed
-            if (this->is_rtsp && packet.synced) {
-                // compute absolute UNIX timestamp for each frame as follows (90 kHz clock as in RTP spec):
-                // frame_time_unix = last_rtcp_ntp_time_unix + (timestamp - last_rtcp_timestamp) / 90000
-                struct timeval tv;
-                ntp2tv(&packet.last_rtcp_ntp_time, &tv);
-                double rtp_diff = (double)(packet.timestamp - packet.last_rtcp_timestamp) / 90000.0;
-                this->frame_timestamp = (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0 + rtp_diff;
-#ifdef DEBUG
-                std::cerr << "frame_timestamp (UNIX): " << std::fixed << this->frame_timestamp << std::endl;
-#endif
-            }
-            // if no RTSP is used or no RTP timestamp <-> NTP walltime mapping is received, make timestamp from local system time
-            else {
+//            if (this->is_rtsp && packet.synced) {
+//                // compute absolute UNIX timestamp for each frame as follows (90 kHz clock as in RTP spec):
+//                // frame_time_unix = last_rtcp_ntp_time_unix + (timestamp - last_rtcp_timestamp) / 90000
+//                struct timeval tv;
+//                ntp2tv(&packet.last_rtcp_ntp_time, &tv);
+//                double rtp_diff = (double)(packet.timestamp - packet.last_rtcp_timestamp) / 90000.0;
+//                this->frame_timestamp = (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0 + rtp_diff;
+//#ifdef DEBUG
+//                std::cerr << "frame_timestamp (UNIX): " << std::fixed << this->frame_timestamp << std::endl;
+//#endif
+//            }
+//            // if no RTSP is used or no RTP timestamp <-> NTP walltime mapping is received, make timestamp from local system time
+//            else {
                 auto now = std::chrono::system_clock::now();
                 this->frame_timestamp = std::chrono::duration<double>(now.time_since_epoch()).count();
-            }
+//            }
 
             this->frame_number++;
             valid = true;
